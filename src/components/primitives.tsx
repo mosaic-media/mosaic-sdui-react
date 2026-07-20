@@ -68,6 +68,9 @@ export function Image({ node }: { node: UINode }) {
   // On such a failure we retry once without crossOrigin: the image displays, and
   // only its ambient sampling is lost.
   const [corsBlocked, setCorsBlocked] = useState(false);
+  // A src that fails even without crossOrigin (a genuine 404 / missing art)
+  // falls through to the typed placeholder rather than a broken-image icon.
+  const [failed, setFailed] = useState(false);
 
   const sample = () => {
     const el = imgRef.current;
@@ -85,7 +88,7 @@ export function Image({ node }: { node: UINode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artLight, src]);
 
-  if (!src) {
+  if (!src || failed) {
     // "label" shows a truncated type label (poster placeholders); "initials"
     // condenses a name to 1–2 letters (avatar-sized placeholders).
     const text =
@@ -115,9 +118,6 @@ export function Image({ node }: { node: UINode }) {
           palette.current = null;
           if (artLight === "ambient") setAmbientArt(sample());
         },
-        // A CORS-less CDN fails the anonymous request; drop crossOrigin and let
-        // the image load plainly (sampling is skipped for it).
-        onError: useCors ? () => setCorsBlocked(true) : undefined,
         ...(artLight === "focus"
           ? {
               onMouseEnter: () => {
@@ -130,6 +130,14 @@ export function Image({ node }: { node: UINode }) {
       }
     : {};
 
+  // On load failure: first drop crossOrigin (a CORS-less CDN blocks the
+  // anonymous request — the image is fine, the request isn't), then, if a plain
+  // load still fails, give up to the placeholder.
+  const onError = () => {
+    if (useCors) setCorsBlocked(true);
+    else setFailed(true);
+  };
+
   return (
     <img
       // Remount when falling back so the browser re-fetches without crossOrigin.
@@ -139,6 +147,7 @@ export function Image({ node }: { node: UINode }) {
       alt={alt}
       loading={artLight === "ambient" ? "eager" : "lazy"}
       style={{ ...css, display: "block", objectFit: fit }}
+      onError={onError}
       {...artProps}
     />
   );
